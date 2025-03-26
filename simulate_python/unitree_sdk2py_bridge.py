@@ -109,118 +109,140 @@ class UnitreeSdk2Bridge:
         }
 
     def LowCmdHandler(self, msg: LowCmd_):
-        if self.mj_data != None:
-            for i in range(self.num_motor):
-                self.mj_data.ctrl[i] = (
-                    msg.motor_cmd[i].tau
-                    + msg.motor_cmd[i].kp
-                    * (msg.motor_cmd[i].q - self.mj_data.sensordata[i])
-                    + msg.motor_cmd[i].kd
-                    * (
-                        msg.motor_cmd[i].dq
-                        - self.mj_data.sensordata[i + self.num_motor]
-                    )
-                )
+        if self.mj_data is not None:
+            try:
+                for i in range(self.num_motor):
+                    if i < len(self.mj_data.sensordata) and i + self.num_motor < len(self.mj_data.sensordata):
+                        self.mj_data.ctrl[i] = (
+                            msg.motor_cmd[i].tau
+                            + msg.motor_cmd[i].kp
+                            * (msg.motor_cmd[i].q - self.mj_data.sensordata[i])
+                            + msg.motor_cmd[i].kd
+                            * (
+                                msg.motor_cmd[i].dq
+                                - self.mj_data.sensordata[i + self.num_motor]
+                            )
+                        )
+                    else:
+                        print(f"[ERROR] Index out of bounds in LowCmdHandler: i={i}, num_motor={self.num_motor}, sensordata length={len(self.mj_data.sensordata)}")
+            except IndexError as e:
+                print(f"[ERROR] IndexError in LowCmdHandler: {e}")
+            except Exception as e:
+                print(f"[ERROR] Unexpected error in LowCmdHandler: {e}")
 
     def PublishLowState(self):
-        if self.mj_data != None:
-            for i in range(self.num_motor):
-                self.low_state.motor_state[i].q = self.mj_data.sensordata[i]
-                self.low_state.motor_state[i].dq = self.mj_data.sensordata[
-                    i + self.num_motor
-                ]
-                self.low_state.motor_state[i].tau_est = self.mj_data.sensordata[
-                    i + 2 * self.num_motor
-                ]
+        if self.mj_data is not None:
+            try:
+                # print(f"[DEBUG] sensordata length: {len(self.mj_data.sensordata)}")
+                # print(f"[DEBUG] dim_motor_sensor: {self.dim_motor_sensor}")
+                # print(f"[DEBUG] num_motor: {self.num_motor}")
+                # print(f"[DEBUG] self.low_state.motor_state length: {len(self.low_state.motor_state)}")
 
-            if self.have_frame_sensor_:
-
-                self.low_state.imu_state.quaternion[0] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 0
-                ]
-                self.low_state.imu_state.quaternion[1] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 1
-                ]
-                self.low_state.imu_state.quaternion[2] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 2
-                ]
-                self.low_state.imu_state.quaternion[3] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 3
-                ]
-
-                self.low_state.imu_state.gyroscope[0] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 4
-                ]
-                self.low_state.imu_state.gyroscope[1] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 5
-                ]
-                self.low_state.imu_state.gyroscope[2] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 6
-                ]
-
-                self.low_state.imu_state.accelerometer[0] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 7
-                ]
-                self.low_state.imu_state.accelerometer[1] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 8
-                ]
-                self.low_state.imu_state.accelerometer[2] = self.mj_data.sensordata[
-                    self.dim_motor_sensor + 9
-                ]
-
-            if self.joystick != None:
-                pygame.event.get()
-                # Buttons
-                self.low_state.wireless_remote[2] = int(
-                    "".join(
-                        [
-                            f"{key}"
-                            for key in [
-                                0,
-                                0,
-                                int(self.joystick.get_axis(self.axis_id["LT"]) > 0),
-                                int(self.joystick.get_axis(self.axis_id["RT"]) > 0),
-                                int(self.joystick.get_button(self.button_id["SELECT"])),
-                                int(self.joystick.get_button(self.button_id["START"])),
-                                int(self.joystick.get_button(self.button_id["LB"])),
-                                int(self.joystick.get_button(self.button_id["RB"])),
-                            ]
+                for i in range(min(self.num_motor, len(self.low_state.motor_state))):
+                    if i < len(self.mj_data.sensordata) and i + 2 * self.num_motor < len(self.mj_data.sensordata):
+                        self.low_state.motor_state[i].q = self.mj_data.sensordata[i]
+                        self.low_state.motor_state[i].dq = self.mj_data.sensordata[
+                            i + self.num_motor
                         ]
-                    ),
-                    2,
-                )
-                self.low_state.wireless_remote[3] = int(
-                    "".join(
-                        [
-                            f"{key}"
-                            for key in [
-                                int(self.joystick.get_hat(0)[0] < 0),  # left
-                                int(self.joystick.get_hat(0)[1] < 0),  # down
-                                int(self.joystick.get_hat(0)[0] > 0), # right
-                                int(self.joystick.get_hat(0)[1] > 0),    # up
-                                int(self.joystick.get_button(self.button_id["Y"])),     # Y
-                                int(self.joystick.get_button(self.button_id["X"])),     # X
-                                int(self.joystick.get_button(self.button_id["B"])),     # B
-                                int(self.joystick.get_button(self.button_id["A"])),     # A
-                            ]
+                        self.low_state.motor_state[i].tau_est = self.mj_data.sensordata[
+                            i + 2 * self.num_motor
                         ]
-                    ),
-                    2,
-                )
-                # Axes
-                sticks = [
-                    self.joystick.get_axis(self.axis_id["LX"]),
-                    self.joystick.get_axis(self.axis_id["RX"]),
-                    -self.joystick.get_axis(self.axis_id["RY"]),
-                    -self.joystick.get_axis(self.axis_id["LY"]),
-                ]
-                packs = list(map(lambda x: struct.pack("f", x), sticks))
-                self.low_state.wireless_remote[4:8] = packs[0]
-                self.low_state.wireless_remote[8:12] = packs[1]
-                self.low_state.wireless_remote[12:16] = packs[2]
-                self.low_state.wireless_remote[20:24] = packs[3]
+                    else:
+                        print(f"[ERROR] Index out of bounds in PublishLowState: i={i}, num_motor={self.num_motor}, sensordata length={len(self.mj_data.sensordata)}")
 
-            self.low_state_puber.Write(self.low_state)
+                if self.have_frame_sensor_:
+                    if self.dim_motor_sensor + 9 < len(self.mj_data.sensordata):
+                        self.low_state.imu_state.quaternion[0] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 0
+                        ]
+                        self.low_state.imu_state.quaternion[1] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 1
+                        ]
+                        self.low_state.imu_state.quaternion[2] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 2
+                        ]
+                        self.low_state.imu_state.quaternion[3] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 3
+                        ]
+
+                        self.low_state.imu_state.gyroscope[0] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 4
+                        ]
+                        self.low_state.imu_state.gyroscope[1] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 5
+                        ]
+                        self.low_state.imu_state.gyroscope[2] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 6
+                        ]
+
+                        self.low_state.imu_state.accelerometer[0] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 7
+                        ]
+                        self.low_state.imu_state.accelerometer[1] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 8
+                        ]
+                        self.low_state.imu_state.accelerometer[2] = self.mj_data.sensordata[
+                            self.dim_motor_sensor + 9
+                        ]
+                    else:
+                        print(f"[ERROR] Index out of bounds for IMU data in PublishLowState: dim_motor_sensor={self.dim_motor_sensor}, sensordata length={len(self.mj_data.sensordata)}")
+                if self.joystick != None:
+                    pygame.event.get()
+                    # Buttons
+                    self.low_state.wireless_remote[2] = int(
+                        "".join(
+                            [
+                                f"{key}"
+                                for key in [
+                                    0,
+                                    0,
+                                    int(self.joystick.get_axis(self.axis_id["LT"]) > 0),
+                                    int(self.joystick.get_axis(self.axis_id["RT"]) > 0),
+                                    int(self.joystick.get_button(self.button_id["SELECT"])),
+                                    int(self.joystick.get_button(self.button_id["START"])),
+                                    int(self.joystick.get_button(self.button_id["LB"])),
+                                    int(self.joystick.get_button(self.button_id["RB"])),
+                                ]
+                            ]
+                        ),
+                        2,
+                    )
+                    self.low_state.wireless_remote[3] = int(
+                        "".join(
+                            [
+                                f"{key}"
+                                for key in [
+                                    int(self.joystick.get_hat(0)[0] < 0),  # left
+                                    int(self.joystick.get_hat(0)[1] < 0),  # down
+                                    int(self.joystick.get_hat(0)[0] > 0), # right
+                                    int(self.joystick.get_hat(0)[1] > 0),    # up
+                                    int(self.joystick.get_button(self.button_id["Y"])),     # Y
+                                    int(self.joystick.get_button(self.button_id["X"])),     # X
+                                    int(self.joystick.get_button(self.button_id["B"])),     # B
+                                    int(self.joystick.get_button(self.button_id["A"])),     # A
+                                ]
+                            ]
+                        ),
+                        2,
+                    )
+                    # Axes
+                    sticks = [
+                        self.joystick.get_axis(self.axis_id["LX"]),
+                        self.joystick.get_axis(self.axis_id["RX"]),
+                        -self.joystick.get_axis(self.axis_id["RY"]),
+                        -self.joystick.get_axis(self.axis_id["LY"]),
+                    ]
+                    packs = list(map(lambda x: struct.pack("f", x), sticks))
+                    self.low_state.wireless_remote[4:8] = packs[0]
+                    self.low_state.wireless_remote[8:12] = packs[1]
+                    self.low_state.wireless_remote[12:16] = packs[2]
+                    self.low_state.wireless_remote[20:24] = packs[3]
+                self.low_state_puber.Write(self.low_state)
+
+            except IndexError as e:
+                print(f"[ERROR] IndexError in PublishLowState: {e}")
+            except Exception as e:
+                print(f"[ERROR] Unexpected error in PublishLowState: {e}")
 
     def PublishHighState(self):
 
